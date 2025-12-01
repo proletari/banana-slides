@@ -52,14 +52,24 @@ apiClient.interceptors.response.use(
 );
 
 // 图片URL处理工具
-export const getImageUrl = (path?: string): string => {
+export const getImageUrl = (path?: string, timestamp?: string | number): string => {
   if (!path) return '';
   // 如果已经是完整URL，直接返回
   if (path.startsWith('http://') || path.startsWith('https://')) {
     return path;
   }
   // 拼接BASE URL
-  return `${API_BASE_URL}${path.startsWith('/') ? path : '/' + path}`;
+  let url = `${API_BASE_URL}${path.startsWith('/') ? path : '/' + path}`;
+  
+  // 添加时间戳参数避免浏览器缓存（仅在提供时间戳时添加）
+  if (timestamp) {
+    const ts = typeof timestamp === 'string' 
+      ? new Date(timestamp).getTime() 
+      : timestamp;
+    url += `?v=${ts}`;
+  }
+  
+  return url;
 };
 
 export default apiClient;

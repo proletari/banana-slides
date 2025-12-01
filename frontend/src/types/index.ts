@@ -17,6 +17,17 @@ export interface DescriptionContent {
   layout_suggestion: string;
 }
 
+// 图片版本
+export interface ImageVersion {
+  version_id: string;
+  page_id: string;
+  image_path: string;
+  image_url?: string;
+  version_number: number;
+  is_current: boolean;
+  created_at?: string;
+}
+
 // 页面
 export interface Page {
   page_id: string;  // 后端返回 page_id
@@ -30,6 +41,7 @@ export interface Page {
   status: PageStatus;
   created_at?: string;
   updated_at?: string;
+  image_versions?: ImageVersion[]; // 历史版本列表
 }
 
 // 项目

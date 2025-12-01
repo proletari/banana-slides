@@ -180,6 +180,33 @@ export const editPageImage = async (
   return response.data;
 };
 
+/**
+ * 获取页面图片历史版本
+ */
+export const getPageImageVersions = async (
+  projectId: string,
+  pageId: string
+): Promise<ApiResponse<{ versions: any[] }>> => {
+  const response = await apiClient.get<ApiResponse<{ versions: any[] }>>(
+    `/api/projects/${projectId}/pages/${pageId}/image-versions`
+  );
+  return response.data;
+};
+
+/**
+ * 设置当前使用的图片版本
+ */
+export const setCurrentImageVersion = async (
+  projectId: string,
+  pageId: string,
+  versionId: string
+): Promise<ApiResponse> => {
+  const response = await apiClient.post<ApiResponse>(
+    `/api/projects/${projectId}/pages/${pageId}/image-versions/${versionId}/set-current`
+  );
+  return response.data;
+};
+
 // ===== 页面操作 =====
 
 /**

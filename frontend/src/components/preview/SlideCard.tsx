@@ -23,7 +23,7 @@ export const SlideCard: React.FC<SlideCardProps> = ({
 }) => {
   const { confirm, ConfirmDialog } = useConfirm();
   const imageUrl = page.generated_image_path
-    ? getImageUrl(page.generated_image_path)
+    ? getImageUrl(page.generated_image_path, page.updated_at)
     : '';
 
   return (

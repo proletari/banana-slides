@@ -194,7 +194,7 @@ export const History: React.FC = () => {
     // 找到第一页有图片的页面
     const firstPageWithImage = project.pages.find(p => p.generated_image_path);
     if (firstPageWithImage?.generated_image_path) {
-      return getImageUrl(firstPageWithImage.generated_image_path);
+      return getImageUrl(firstPageWithImage.generated_image_path, firstPageWithImage.updated_at);
     }
     
     return null;

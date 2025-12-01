@@ -105,8 +105,8 @@ class AIService:
           {{
             "part": "Part 2: Main Content",
             "pages": [
-              {{"title": "Topic 1", "points": ["point1", "point2"]}},
-              {{"title": "Topic 2", "points": ["point1", "point2"]}}
+              {{"title": "Topic 1", "points": ["point1", "relavant_pic_url1", "point2"]}},
+              {{"title": "Topic 2", "points": ["point1", "point2", "relavant_pic_url2"]}}
             ]
           }}
         ]
@@ -178,6 +178,7 @@ class AIService:
         - 依赖性强： 生活完全依赖于自然资源的直接供给，对自然规律敬畏。
         - 适应而非改造： 通过观察和模仿学习自然，发展出适应当地环境的生存技能。
         - 影响特点： 局部、短期、低强度，生态系统有充足的自我恢复能力。
+        其他页面素材（如果有请加上，包括markdown图片链接等）
         
         使用全中文输出。
         """)
@@ -276,7 +277,7 @@ class AIService:
             Exception with detailed error message if generation fails
         """
         try:
-            print(f"[DEBUG] Generating image with prompt (first 100 chars): {prompt[:100]}...")
+            print(f"[DEBUG] Generating image with prompt (first 100 chars): {prompt[:500]}...")
             print(f"[DEBUG] Reference image: {ref_image_path}")
             if additional_ref_images:
                 print(f"[DEBUG] Additional reference images: {len(additional_ref_images)}")

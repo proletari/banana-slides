@@ -15,6 +15,8 @@ import { Button, Loading, Modal, Textarea, useToast, useConfirm } from '@/compon
 import { SlideCard } from '@/components/preview/SlideCard';
 import { useProjectStore } from '@/store/useProjectStore';
 import { getImageUrl } from '@/api/client';
+import { getPageImageVersions, setCurrentImageVersion } from '@/api/endpoints';
+import type { ImageVersion } from '@/types';
 
 export const SlidePreview: React.FC = () => {
   const navigate = useNavigate();
@@ -41,6 +43,8 @@ export const SlidePreview: React.FC = () => {
   const [isOutlineExpanded, setIsOutlineExpanded] = useState(false);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [imageVersions, setImageVersions] = useState<ImageVersion[]>([]);
+  const [showVersionMenu, setShowVersionMenu] = useState(false);
   const { show, ToastContainer } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
 
@@ -51,6 +55,36 @@ export const SlidePreview: React.FC = () => {
       syncProject(projectId);
     }
   }, [projectId, currentProject, syncProject]);
+
+  // 加载当前页面的历史版本
+  useEffect(() => {
+    const loadVersions = async () => {
+      if (!currentProject || !projectId || selectedIndex < 0 || selectedIndex >= currentProject.pages.length) {
+        setImageVersions([]);
+        setShowVersionMenu(false);
+        return;
+      }
+
+      const page = currentProject.pages[selectedIndex];
+      if (!page?.id) {
+        setImageVersions([]);
+        setShowVersionMenu(false);
+        return;
+      }
+
+      try {
+        const response = await getPageImageVersions(projectId, page.id);
+        if (response.data?.versions) {
+          setImageVersions(response.data.versions);
+        }
+      } catch (error) {
+        console.error('Failed to load image versions:', error);
+        setImageVersions([]);
+      }
+    };
+
+    loadVersions();
+  }, [currentProject, selectedIndex, projectId]);
 
   const handleGenerateAll = async () => {
     const hasImages = currentProject?.pages.some(
@@ -82,10 +116,34 @@ export const SlidePreview: React.FC = () => {
     
     try {
       await generatePageImage(page.id, hasImage);
+      // 重新加载版本列表
+      if (projectId) {
+        const response = await getPageImageVersions(projectId, page.id);
+        if (response.data?.versions) {
+          setImageVersions(response.data.versions);
+        }
+      }
+      await syncProject(projectId || currentProject.id);
       show({ message: '图片生成成功', type: 'success' });
     } catch (error: any) {
       show({ 
         message: `生成失败: ${error.message || '未知错误'}`, 
+        type: 'error' 
+      });
+    }
+  };
+
+  const handleSwitchVersion = async (versionId: string) => {
+    if (!currentProject || !selectedPage?.id || !projectId) return;
+    
+    try {
+      await setCurrentImageVersion(projectId, selectedPage.id, versionId);
+      await syncProject(projectId);
+      setShowVersionMenu(false);
+      show({ message: '已切换到该版本', type: 'success' });
+    } catch (error: any) {
+      show({ 
+        message: `切换失败: ${error.message || '未知错误'}`, 
         type: 'error' 
       });
     }
@@ -153,7 +211,7 @@ export const SlidePreview: React.FC = () => {
 
   const selectedPage = currentProject.pages[selectedIndex];
   const imageUrl = selectedPage?.generated_image_path
-    ? getImageUrl(selectedPage.generated_image_path)
+    ? getImageUrl(selectedPage.generated_image_path, selectedPage.updated_at)
     : '';
 
   const hasAllImages = currentProject.pages.every(
@@ -365,6 +423,51 @@ export const SlidePreview: React.FC = () => {
 
                   {/* 操作 */}
                   <div className="flex items-center gap-2">
+                    {imageVersions.length > 1 && (
+                      <div className="relative">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowVersionMenu(!showVersionMenu)}
+                        >
+                          历史版本 ({imageVersions.length})
+                        </Button>
+                        {showVersionMenu && (
+                          <div className="absolute right-0 bottom-full mb-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-20 max-h-96 overflow-y-auto">
+                            {imageVersions.map((version) => (
+                              <button
+                                key={version.version_id}
+                                onClick={() => handleSwitchVersion(version.version_id)}
+                                className={`w-full px-4 py-2 text-left hover:bg-gray-50 transition-colors flex items-center justify-between ${
+                                  version.is_current ? 'bg-banana-50' : ''
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm">
+                                    版本 {version.version_number}
+                                  </span>
+                                  {version.is_current && (
+                                    <span className="text-xs text-banana-600 font-medium">
+                                      (当前)
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-xs text-gray-400">
+                                  {version.created_at
+                                    ? new Date(version.created_at).toLocaleString('zh-CN', {
+                                        month: 'short',
+                                        day: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                      })
+                                    : ''}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <Button
                       variant="secondary"
                       size="sm"

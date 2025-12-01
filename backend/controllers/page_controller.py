@@ -2,7 +2,7 @@
 Page Controller - handles page-related endpoints
 """
 from flask import Blueprint, request
-from models import db, Project, Page
+from models import db, Project, Page, PageImageVersion
 from utils import success_response, error_response, not_found, bad_request
 from services import AIService, FileService
 from datetime import datetime
@@ -327,15 +327,25 @@ def generate_page_image(project_id, page_id):
         if page.part:
             page_data['part'] = page.part
         
+        # 获取描述文本（可能是 text 字段或 text_content 数组）
         desc_text = desc_content.get('text', '')
+        if not desc_text and desc_content.get('text_content'):
+            # 如果 text 字段不存在，尝试从 text_content 数组获取
+            text_content = desc_content.get('text_content', [])
+            if isinstance(text_content, list):
+                desc_text = '\n'.join(text_content)
+            else:
+                desc_text = str(text_content)
         
-        # 从项目描述中提取图片 URL（在生成 prompt 之前提取，以便告知 AI）
+        # 从当前页面的描述内容中提取图片 URL（在生成 prompt 之前提取，以便告知 AI）
         additional_ref_images = []
         has_material_images = False
-        if project.idea_prompt:
-            image_urls = ai_service.extract_image_urls_from_markdown(project.idea_prompt)
+        
+        # 从描述文本中提取图片
+        if desc_text:
+            image_urls = ai_service.extract_image_urls_from_markdown(desc_text)
             if image_urls:
-                print(f"[INFO] Found {len(image_urls)} image(s) in project description")
+                print(f"[INFO] Found {len(image_urls)} image(s) in page {page_id} description")
                 additional_ref_images = image_urls
                 has_material_images = True
         
@@ -364,16 +374,37 @@ def generate_page_image(project_id, page_id):
             db.session.commit()
             return error_response('AI_SERVICE_ERROR', 'Failed to generate image', 503)
         
-        # Save image
-        image_path = file_service.save_generated_image(image, project_id, page_id)
+        # Calculate next version number
+        existing_versions = PageImageVersion.query.filter_by(page_id=page_id).all()
+        next_version = len(existing_versions) + 1
         
+        # Save image with version number
+        image_path = file_service.save_generated_image(
+            image, project_id, page_id, 
+            version_number=next_version
+        )
+        
+        # Mark all previous versions as not current
+        for version in existing_versions:
+            version.is_current = False
+        
+        # Create new version record
+        new_version = PageImageVersion(
+            page_id=page_id,
+            image_path=image_path,
+            version_number=next_version,
+            is_current=True
+        )
+        db.session.add(new_version)
+        
+        # Update page with current image path
         page.generated_image_path = image_path
         page.status = 'COMPLETED'
         page.updated_at = datetime.utcnow()
         
         db.session.commit()
         
-        return success_response(page.to_dict())
+        return success_response(page.to_dict(include_versions=True))
     
     except Exception as e:
         db.session.rollback()
@@ -446,18 +477,95 @@ def edit_page_image(project_id, page_id):
             db.session.commit()
             return error_response('AI_SERVICE_ERROR', 'Failed to edit image', 503)
         
-        # Save edited image
-        image_path = file_service.save_generated_image(image, project_id, page_id)
+        # Calculate next version number
+        existing_versions = PageImageVersion.query.filter_by(page_id=page_id).all()
+        next_version = len(existing_versions) + 1
         
+        # Save edited image with version number
+        image_path = file_service.save_generated_image(
+            image, project_id, page_id,
+            version_number=next_version
+        )
+        
+        # Mark all previous versions as not current
+        for version in existing_versions:
+            version.is_current = False
+        
+        # Create new version record
+        new_version = PageImageVersion(
+            page_id=page_id,
+            image_path=image_path,
+            version_number=next_version,
+            is_current=True
+        )
+        db.session.add(new_version)
+        
+        # Update page with current image path
         page.generated_image_path = image_path
         page.status = 'COMPLETED'
         page.updated_at = datetime.utcnow()
         
         db.session.commit()
         
-        return success_response(page.to_dict())
+        return success_response(page.to_dict(include_versions=True))
     
     except Exception as e:
         db.session.rollback()
         return error_response('AI_SERVICE_ERROR', str(e), 503)
 
+
+
+@page_bp.route('/<project_id>/pages/<page_id>/image-versions', methods=['GET'])
+def get_page_image_versions(project_id, page_id):
+    """
+    GET /api/projects/{project_id}/pages/{page_id}/image-versions - Get all image versions for a page
+    """
+    try:
+        page = Page.query.get(page_id)
+        
+        if not page or page.project_id != project_id:
+            return not_found('Page')
+        
+        versions = PageImageVersion.query.filter_by(page_id=page_id)\
+            .order_by(PageImageVersion.version_number.desc()).all()
+        
+        return success_response({
+            'versions': [v.to_dict() for v in versions]
+        })
+    
+    except Exception as e:
+        return error_response('SERVER_ERROR', str(e), 500)
+
+
+@page_bp.route('/<project_id>/pages/<page_id>/image-versions/<version_id>/set-current', methods=['POST'])
+def set_current_image_version(project_id, page_id, version_id):
+    """
+    POST /api/projects/{project_id}/pages/{page_id}/image-versions/{version_id}/set-current
+    Set a specific version as the current one
+    """
+    try:
+        page = Page.query.get(page_id)
+        
+        if not page or page.project_id != project_id:
+            return not_found('Page')
+        
+        version = PageImageVersion.query.get(version_id)
+        
+        if not version or version.page_id != page_id:
+            return not_found('Image Version')
+        
+        # Mark all versions as not current
+        PageImageVersion.query.filter_by(page_id=page_id).update({'is_current': False})
+        
+        # Set this version as current
+        version.is_current = True
+        page.generated_image_path = version.image_path
+        page.updated_at = datetime.utcnow()
+        
+        db.session.commit()
+        
+        return success_response(page.to_dict(include_versions=True))
+    
+    except Exception as e:
+        db.session.rollback()
+        return error_response('SERVER_ERROR', str(e), 500)

@@ -26,6 +26,9 @@ class Page(db.Model):
     
     # Relationships
     project = db.relationship('Project', back_populates='pages')
+    image_versions = db.relationship('PageImageVersion', back_populates='page', 
+                                     lazy='dynamic', cascade='all, delete-orphan',
+                                     order_by='PageImageVersion.version_number.desc()')
     
     def get_outline_content(self):
         """Parse outline_content from JSON string"""
@@ -59,9 +62,9 @@ class Page(db.Model):
         else:
             self.description_content = None
     
-    def to_dict(self):
+    def to_dict(self, include_versions=False):
         """Convert to dictionary"""
-        return {
+        data = {
             'page_id': self.id,
             'order_index': self.order_index,
             'part': self.part,
@@ -72,6 +75,11 @@ class Page(db.Model):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
+        
+        if include_versions:
+            data['image_versions'] = [v.to_dict() for v in self.image_versions.all()]
+        
+        return data
     
     def __repr__(self):
         return f'<Page {self.id}: {self.order_index} - {self.status}>'

@@ -258,7 +258,7 @@ def generate_descriptions(project_id):
         if not project:
             return not_found('Project')
         
-        if project.status not in ['OUTLINE_GENERATED', 'DRAFT']:
+        if project.status not in ['OUTLINE_GENERATED', 'DRAFT', 'DESCRIPTIONS_GENERATED']:
             return bad_request("Project must have outline generated first")
         
         # Get pages

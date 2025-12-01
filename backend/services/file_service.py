@@ -60,15 +60,17 @@ class FileService:
         return str(filepath.relative_to(self.upload_folder))
     
     def save_generated_image(self, image: Image.Image, project_id: str, 
-                           page_id: str, image_format: str = 'PNG') -> str:
+                           page_id: str, image_format: str = 'PNG', 
+                           version_number: int = None) -> str:
         """
-        Save generated image
+        Save generated image with version support
         
         Args:
             image: PIL Image object
             project_id: Project ID
             page_id: Page ID
             image_format: Image format (PNG, JPEG, etc.)
+            version_number: Optional version number. If None, uses timestamp-based naming
         
         Returns:
             Relative file path from upload folder
@@ -77,7 +79,16 @@ class FileService:
         
         # Use lowercase extension
         ext = image_format.lower()
-        filename = f"{page_id}.{ext}"
+        
+        # Generate filename with version number or timestamp
+        if version_number is not None:
+            filename = f"{page_id}_v{version_number}.{ext}"
+        else:
+            # Use timestamp for unique filename
+            import time
+            timestamp = int(time.time() * 1000)  # milliseconds
+            filename = f"{page_id}_{timestamp}.{ext}"
+        
         filepath = pages_dir / filename
         
         # Save image - format is determined by file extension or explicitly specified
@@ -86,6 +97,22 @@ class FileService:
         
         # Return relative path
         return str(filepath.relative_to(self.upload_folder))
+    
+    def delete_page_image_version(self, image_path: str) -> bool:
+        """
+        Delete a specific image version file
+        
+        Args:
+            image_path: Relative path to the image file
+        
+        Returns:
+            True if deleted successfully
+        """
+        filepath = self.upload_folder / image_path
+        if filepath.exists() and filepath.is_file():
+            filepath.unlink()
+            return True
+        return False
     
     def get_file_url(self, project_id: str, file_type: str, filename: str) -> str:
         """
