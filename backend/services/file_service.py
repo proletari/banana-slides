@@ -314,4 +314,46 @@ class FileService:
             shutil.rmtree(template_dir)
         
         return True
+    
+    def list_materials(self, project_id: str) -> list:
+        """
+        List all material images for a project
+        
+        Args:
+            project_id: Project ID
+        
+        Returns:
+            List of material info dicts with filename, url, and relative_path
+        """
+        materials_dir = self._get_materials_dir(project_id)
+        
+        if not materials_dir.exists():
+            return []
+        
+        materials = []
+        import os
+        from datetime import datetime
+        
+        # Get all image files in materials directory
+        for file in materials_dir.iterdir():
+            if file.is_file() and file.suffix.lower() in ['.png', '.jpg', '.jpeg', '.gif', '.webp']:
+                filename = file.name
+                relative_path = str(file.relative_to(self.upload_folder))
+                image_url = self.get_file_url(project_id, 'materials', filename)
+                
+                # Get file modification time
+                mtime = os.path.getmtime(file)
+                created_at = datetime.fromtimestamp(mtime).isoformat()
+                
+                materials.append({
+                    'filename': filename,
+                    'url': image_url,
+                    'relative_path': relative_path,
+                    'created_at': created_at
+                })
+        
+        # Sort by creation time (newest first)
+        materials.sort(key=lambda x: x['created_at'], reverse=True)
+        
+        return materials
 

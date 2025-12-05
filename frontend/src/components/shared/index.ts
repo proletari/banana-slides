@@ -8,5 +8,6 @@ export { Toast, useToast } from './Toast';
 export { StatusBadge } from './StatusBadge';
 export { ConfirmDialog, useConfirm } from './ConfirmDialog';
 export { MaterialGeneratorModal } from './MaterialGeneratorModal';
+export { MaterialSelector } from './MaterialSelector';
 export { GithubLink } from './GithubLink';
 

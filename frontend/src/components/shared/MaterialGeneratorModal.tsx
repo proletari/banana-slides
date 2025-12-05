@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
-import { Image as ImageIcon, ImagePlus, Upload, X } from 'lucide-react';
-import { Modal, Textarea, Button, useToast } from '@/components/shared';
+import { Image as ImageIcon, ImagePlus, Upload, X, FolderOpen } from 'lucide-react';
+import { Modal, Textarea, Button, useToast, MaterialSelector, Skeleton } from '@/components/shared';
 import { generateMaterialImage } from '@/api/endpoints';
+import { getImageUrl } from '@/api/client';
+import { materialUrlToFile } from './MaterialSelector';
+import type { Material } from '@/api/endpoints';
 
 interface MaterialGeneratorModalProps {
   projectId: string;
@@ -27,6 +30,7 @@ export const MaterialGeneratorModal: React.FC<MaterialGeneratorModalProps> = ({
   const [extraImages, setExtraImages] = useState<File[]>([]);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isMaterialSelectorOpen, setIsMaterialSelectorOpen] = useState(false);
 
   const handleRefImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = (e.target.files && e.target.files[0]) || null;
@@ -37,13 +41,52 @@ export const MaterialGeneratorModal: React.FC<MaterialGeneratorModalProps> = ({
 
   const handleExtraImagesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    if (files.length > 0) {
+    if (files.length === 0) return;
+
+    // 如果还没有主参考图，优先把第一张作为主参考图，其余作为额外参考图
+    if (!refImage) {
+      const [first, ...rest] = files;
+      setRefImage(first);
+      if (rest.length > 0) {
+        setExtraImages((prev) => [...prev, ...rest]);
+      }
+    } else {
       setExtraImages((prev) => [...prev, ...files]);
     }
   };
 
   const removeExtraImage = (index: number) => {
     setExtraImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSelectMaterials = async (materials: Material[]) => {
+    try {
+      // 将选中的素材转换为File对象
+      const files = await Promise.all(
+        materials.map((material) => materialUrlToFile(material))
+      );
+
+      if (files.length === 0) return;
+
+      // 如果没有主图，优先把第一张设为主参考图
+      if (!refImage) {
+        const [first, ...rest] = files;
+        setRefImage(first);
+        if (rest.length > 0) {
+          setExtraImages((prev) => [...prev, ...rest]);
+        }
+      } else {
+        setExtraImages((prev) => [...prev, ...files]);
+      }
+
+      show({ message: `已添加 ${files.length} 个素材`, type: 'success' });
+    } catch (error: any) {
+      console.error('加载素材失败:', error);
+      show({
+        message: '加载素材失败: ' + (error.message || '未知错误'),
+        type: 'error',
+      });
+    }
   };
 
   const handleGenerate = async () => {
@@ -58,7 +101,7 @@ export const MaterialGeneratorModal: React.FC<MaterialGeneratorModalProps> = ({
       const url = resp.data?.image_url;
       if (url) {
         // 最新结果展示在顶部
-        setPreviewUrl(url);
+        setPreviewUrl(getImageUrl(url));
         show({ message: '素材生成成功，已保存到历史素材库', type: 'success' });
       } else {
         show({ message: '素材生成失败：未返回图片地址', type: 'error' });
@@ -79,11 +122,16 @@ export const MaterialGeneratorModal: React.FC<MaterialGeneratorModalProps> = ({
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="素材生成" size="lg">
+      <blockquote className="text-sm text-gray-500 mb-4">生成的素材会保存到素材库</blockquote>
       <div className="space-y-4">
         {/* 顶部：生成结果预览（始终显示最新一次生成） */}
         <div className="bg-gray-50 rounded-lg border border-gray-200 p-4">
           <h4 className="text-sm font-semibold text-gray-700 mb-2">生成结果</h4>
-          {previewUrl ? (
+          {isGenerating ? (
+            <div className="aspect-video rounded-lg overflow-hidden border border-gray-200">
+              <Skeleton className="w-full h-full" />
+            </div>
+          ) : previewUrl ? (
             <div className="aspect-video bg-white rounded-lg overflow-hidden border border-gray-200 flex items-center justify-center">
               <img
                 src={previewUrl}
@@ -110,21 +158,44 @@ export const MaterialGeneratorModal: React.FC<MaterialGeneratorModalProps> = ({
 
         {/* 参考图上传区 */}
         <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 space-y-3">
-          <div className="flex items-center gap-2 text-sm text-gray-700">
-            <ImagePlus size={16} className="text-gray-500" />
-            <span className="font-medium">参考图片（可选）</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm text-gray-700">
+              <ImagePlus size={16} className="text-gray-500" />
+              <span className="font-medium">参考图片（可选）</span>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={<FolderOpen size={16} />}
+              onClick={() => setIsMaterialSelectorOpen(true)}
+            >
+              从素材库选择
+            </Button>
           </div>
           <div className="flex flex-wrap gap-4">
             {/* 主参考图（可选） */}
             <div className="space-y-2">
               <div className="text-xs text-gray-600">主参考图（可选）</div>
-              <label className="w-40 h-28 border-2 border-dashed border-gray-300 rounded flex flex-col items-center justify-center cursor-pointer hover:border-banana-500 transition-colors bg-white overflow-hidden">
+              <label className="w-40 h-28 border-2 border-dashed border-gray-300 rounded flex flex-col items-center justify-center cursor-pointer hover:border-banana-500 transition-colors bg-white relative group">
                 {refImage ? (
-                  <img
-                    src={URL.createObjectURL(refImage)}
-                    alt="主参考图"
-                    className="w-full h-full object-cover"
-                  />
+                  <>
+                    <img
+                      src={URL.createObjectURL(refImage)}
+                      alt="主参考图"
+                      className="w-full h-full object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setRefImage(null);
+                      }}
+                      className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow z-10"
+                    >
+                      <X size={12} />
+                    </button>
+                  </>
                 ) : (
                   <>
                     <ImageIcon size={24} className="text-gray-400 mb-1" />
@@ -188,6 +259,14 @@ export const MaterialGeneratorModal: React.FC<MaterialGeneratorModalProps> = ({
           </Button>
         </div>
       </div>
+      {/* 素材选择器 */}
+      <MaterialSelector
+        projectId={projectId}
+        isOpen={isMaterialSelectorOpen}
+        onClose={() => setIsMaterialSelectorOpen(false)}
+        onSelect={handleSelectMaterials}
+        multiple={true}
+      />
     </Modal>
   );
 };

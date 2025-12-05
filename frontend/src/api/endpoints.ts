@@ -384,6 +384,73 @@ export const generateMaterialImage = async (
   return response.data;
 };
 
+/**
+ * 素材信息接口
+ */
+export interface Material {
+  id?: string;
+  project_id?: string | null;
+  filename: string;
+  url: string;
+  relative_path: string;
+  created_at: string;
+}
+
+/**
+ * 获取素材列表
+ * @param projectId 项目ID，可选。如果为 'all' 则获取所有素材，如果为 'none' 则获取未关联项目的素材，如果不提供则使用全局接口
+ * @param useGlobal 是否使用全局接口（不绑定项目）
+ */
+export const listMaterials = async (
+  projectId?: string,
+  useGlobal: boolean = false
+): Promise<ApiResponse<{ materials: Material[]; count: number }>> => {
+  let url: string;
+  
+  if (useGlobal) {
+    // 使用全局接口
+    if (projectId === 'all' || !projectId) {
+      url = '/api/materials';
+    } else {
+      url = `/api/materials?project_id=${projectId}`;
+    }
+  } else {
+    // 使用项目绑定接口
+    if (projectId === 'all' || !projectId) {
+      url = '/api/projects/all/materials?project_id=all';
+    } else if (projectId === 'none') {
+      url = '/api/projects/all/materials?project_id=none';
+    } else {
+      url = `/api/projects/${projectId}/materials`;
+    }
+  }
+  
+  const response = await apiClient.get<ApiResponse<{ materials: Material[]; count: number }>>(url);
+  return response.data;
+};
+
+/**
+ * 上传素材图片
+ * @param file 图片文件
+ * @param projectId 可选的项目ID，如果不提供或为 'none' 则不关联项目
+ * @param useGlobal 是否使用全局接口（不绑定项目）
+ */
+export const uploadMaterial = async (
+  file: File,
+  projectId?: string | null,
+  useGlobal: boolean = false
+): Promise<ApiResponse<Material>> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  const url = useGlobal
+    ? `/api/materials/upload${projectId ? `?project_id=${projectId}` : ''}`
+    : `/api/projects/${projectId || 'none'}/materials/upload${projectId ? '' : '?project_id=none'}`;
+  
+  const response = await apiClient.post<ApiResponse<Material>>(url, formData);
+  return response.data;
+};
+
 // ===== 用户模板 =====
 
 export interface UserTemplate {

@@ -1,0 +1,40 @@
+"""
+Material model - stores material images
+"""
+import uuid
+from datetime import datetime
+from . import db
+
+
+class Material(db.Model):
+    """
+    Material model - represents a material image
+    """
+    __tablename__ = 'materials'
+    
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    project_id = db.Column(db.String(36), db.ForeignKey('projects.id'), nullable=True)  # 可为空，表示不属于任何项目
+    filename = db.Column(db.String(500), nullable=False)
+    relative_path = db.Column(db.String(500), nullable=False)  # 相对于 upload_folder 的路径
+    url = db.Column(db.String(500), nullable=False)  # 前端可访问的 URL
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    project = db.relationship('Project', backref='materials')
+    
+    def to_dict(self):
+        """Convert to dictionary"""
+        return {
+            'id': self.id,
+            'project_id': self.project_id,
+            'filename': self.filename,
+            'url': self.url,
+            'relative_path': self.relative_path,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+    
+    def __repr__(self):
+        return f'<Material {self.id}: {self.filename} (project={self.project_id or "None"})>'
+

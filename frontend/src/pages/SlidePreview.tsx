@@ -16,9 +16,11 @@ import {
   Image as ImageIcon,
   ImagePlus,
 } from 'lucide-react';
-import { Button, Loading, Modal, Textarea, useToast, useConfirm } from '@/components/shared';
+import { Button, Loading, Modal, Textarea, useToast, useConfirm, MaterialSelector } from '@/components/shared';
 import { MaterialGeneratorModal } from '@/components/shared/MaterialGeneratorModal';
 import { TemplateSelector } from '@/components/shared/TemplateSelector';
+import { materialUrlToFile } from '@/components/shared/MaterialSelector';
+import type { Material } from '@/api/endpoints';
 import { SlideCard } from '@/components/preview/SlideCard';
 import { useProjectStore } from '@/store/useProjectStore';
 import { getImageUrl } from '@/api/client';
@@ -71,6 +73,8 @@ export const SlidePreview: React.FC = () => {
   const [isExtraRequirementsExpanded, setIsExtraRequirementsExpanded] = useState(false);
   // 素材生成模态开关（模块本身可复用，这里只是示例入口）
   const [isMaterialModalOpen, setIsMaterialModalOpen] = useState(false);
+  // 素材选择器模态开关
+  const [isMaterialSelectorOpen, setIsMaterialSelectorOpen] = useState(false);
   // 每页编辑参数缓存（前端会话内缓存，便于重复执行）
   const [editContextByPage, setEditContextByPage] = useState<Record<string, {
     prompt: string;
@@ -336,6 +340,26 @@ export const SlidePreview: React.FC = () => {
       ...prev,
       uploadedFiles: prev.uploadedFiles.filter((_, i) => i !== index),
     }));
+  };
+
+  const handleSelectMaterials = async (materials: Material[]) => {
+    try {
+      // 将选中的素材转换为File对象并添加到上传列表
+      const files = await Promise.all(
+        materials.map((material) => materialUrlToFile(material))
+      );
+      setSelectedContextImages((prev) => ({
+        ...prev,
+        uploadedFiles: [...prev.uploadedFiles, ...files],
+      }));
+      show({ message: `已添加 ${materials.length} 个素材`, type: 'success' });
+    } catch (error: any) {
+      console.error('加载素材失败:', error);
+      show({
+        message: '加载素材失败: ' + (error.message || '未知错误'),
+        type: 'error',
+      });
+    }
   };
 
   // 编辑弹窗打开时，实时把输入与图片选择写入缓存（前端会话内）
@@ -1111,7 +1135,19 @@ export const SlidePreview: React.FC = () => {
 
             {/* 上传图片 */}
             <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">上传图片：</label>
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-gray-700">上传图片：</label>
+                {projectId && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={<ImagePlus size={16} />}
+                    onClick={() => setIsMaterialSelectorOpen(true)}
+                  >
+                    从素材库选择
+                  </Button>
+                )}
+              </div>
               <div className="flex flex-wrap gap-2">
                 {selectedContextImages.uploadedFiles.map((file, idx) => (
                   <div key={idx} className="relative group">
@@ -1177,13 +1213,14 @@ export const SlidePreview: React.FC = () => {
       >
         <div className="space-y-4">
           <p className="text-sm text-gray-600 mb-4">
-            选择一个新的模板将应用到所有页面的图片生成。你可以选择预设模板、已有模板或上传新模板。
+            选择一个新的模板将应用到后续PPT页面生成（不影响已经生成的页面）。你可以选择预设模板、已有模板或上传新模板。
           </p>
           <TemplateSelector
             onSelect={handleTemplateSelect}
             selectedTemplateId={selectedTemplateId}
             selectedPresetTemplateId={selectedPresetTemplateId}
             showUpload={false} // 在预览页面上传的模板直接应用到项目，不上传到用户模板库
+            projectId={projectId || null}
           />
           {isUploadingTemplate && (
             <div className="text-center py-2 text-sm text-gray-500">
@@ -1203,11 +1240,21 @@ export const SlidePreview: React.FC = () => {
       </Modal>
       {/* 素材生成模态组件（可复用模块，这里只是示例挂载） */}
       {projectId && (
-        <MaterialGeneratorModal
-          projectId={projectId}
-          isOpen={isMaterialModalOpen}
-          onClose={() => setIsMaterialModalOpen(false)}
-        />
+        <>
+          <MaterialGeneratorModal
+            projectId={projectId}
+            isOpen={isMaterialModalOpen}
+            onClose={() => setIsMaterialModalOpen(false)}
+          />
+          {/* 素材选择器 */}
+          <MaterialSelector
+            projectId={projectId}
+            isOpen={isMaterialSelectorOpen}
+            onClose={() => setIsMaterialSelectorOpen(false)}
+            onSelect={handleSelectMaterials}
+            multiple={true}
+          />
+        </>
       )}
     </div>
   );

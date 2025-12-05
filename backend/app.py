@@ -16,7 +16,8 @@ load_dotenv()
 from flask import Flask
 from flask_cors import CORS
 from models import db
-from controllers import project_bp, page_bp, template_bp, user_template_bp, export_bp, file_bp, material_bp
+from controllers.material_controller import material_bp, material_global_bp
+from controllers import project_bp, page_bp, template_bp, user_template_bp, export_bp, file_bp
 
 
 # Enable SQLite WAL mode for all connections
@@ -121,6 +122,7 @@ def create_app():
     app.register_blueprint(export_bp)
     app.register_blueprint(file_bp)
     app.register_blueprint(material_bp)
+    app.register_blueprint(material_global_bp)
     
     with app.app_context():
         db.create_all()

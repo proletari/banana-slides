@@ -18,6 +18,7 @@ from .page import Page
 from .task import Task
 from .user_template import UserTemplate
 from .page_image_version import PageImageVersion
+from .material import Material
 
-__all__ = ['db', 'Project', 'Page', 'Task', 'UserTemplate', 'PageImageVersion']
+__all__ = ['db', 'Project', 'Page', 'Task', 'UserTemplate', 'PageImageVersion', 'Material']
 

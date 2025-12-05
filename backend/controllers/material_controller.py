@@ -2,16 +2,18 @@
 Material Controller - handles standalone material image generation
 """
 from flask import Blueprint, request, current_app
-from models import db, Project
+from models import db, Project, Material
 from utils import success_response, error_response, not_found, bad_request
 from services import AIService, FileService
 from pathlib import Path
 from werkzeug.utils import secure_filename
 import tempfile
 import shutil
+from PIL import Image
 
 
 material_bp = Blueprint('materials', __name__, url_prefix='/api/projects')
+material_global_bp = Blueprint('materials_global', __name__, url_prefix='/api/materials')
 
 
 @material_bp.route('/<project_id>/materials/generate', methods=['POST'])
@@ -94,6 +96,15 @@ def generate_material_image(project_id):
             # 构造前端可访问的 URL
             image_url = file_service.get_file_url(project_id, 'materials', filename)
 
+            # 保存素材信息到数据库
+            material = Material(
+                project_id=project_id,
+                filename=filename,
+                relative_path=relative_path,
+                url=image_url
+            )
+            db.session.add(material)
+            
             # 不改变项目结构，仅更新时间以便前端刷新
             project.updated_at = project.updated_at  # 不强制变更，仅保持兼容
             db.session.commit()
@@ -101,6 +112,7 @@ def generate_material_image(project_id):
             return success_response({
                 "image_url": image_url,
                 "relative_path": relative_path,
+                "material_id": material.id,
             })
         finally:
             # 清理临时目录
@@ -110,5 +122,261 @@ def generate_material_image(project_id):
     except Exception as e:
         db.session.rollback()
         return error_response('AI_SERVICE_ERROR', str(e), 503)
+
+
+@material_bp.route('/<project_id>/materials', methods=['GET'])
+def list_materials(project_id):
+    """
+    GET /api/projects/{project_id}/materials - List materials
+    
+    Query params:
+        - project_id: Optional filter by project_id (can be 'all' to get all materials, 'none' to get materials without project)
+    
+    Returns:
+        List of material images with filename, url, and metadata
+    """
+    try:
+        # 支持查询参数来筛选项目
+        filter_project_id = request.args.get('project_id', project_id)
+        
+        # 从数据库查询素材
+        query = Material.query
+        
+        if filter_project_id == 'all':
+            # 获取所有素材（包括有 project_id 和没有 project_id 的）
+            pass  # 不添加任何过滤条件
+        elif filter_project_id == 'none':
+            # 只获取没有关联项目的素材
+            query = query.filter(Material.project_id.is_(None))
+        else:
+            # 验证项目是否存在
+            project = Project.query.get(filter_project_id)
+            if not project:
+                return not_found('Project')
+            # 获取指定项目的素材
+            query = query.filter(Material.project_id == filter_project_id)
+        
+        materials = query.order_by(Material.created_at.desc()).all()
+        
+        # 转换为字典格式
+        materials_list = [material.to_dict() for material in materials]
+        
+        return success_response({
+            "materials": materials_list,
+            "count": len(materials_list)
+        })
+    
+    except Exception as e:
+        return error_response('SERVER_ERROR', str(e), 500)
+
+
+@material_bp.route('/<project_id>/materials/upload', methods=['POST'])
+def upload_material(project_id):
+    """
+    POST /api/projects/{project_id}/materials/upload - Upload a material image
+    
+    支持 multipart/form-data：
+    - file: 图片文件（必需）
+    - project_id: 可选的查询参数，如果不提供则使用路径中的 project_id，如果为 'none' 则不关联项目
+    
+    Returns:
+        Material info with filename, url, and metadata
+    """
+    try:
+        # 支持通过查询参数指定 project_id，如果为 'none' 则不关联项目
+        target_project_id = request.args.get('project_id', project_id)
+        if target_project_id == 'none':
+            target_project_id = None
+        elif target_project_id and target_project_id != 'all':
+            # 验证项目是否存在
+            project = Project.query.get(target_project_id)
+            if not project:
+                return not_found('Project')
+        
+        # 获取上传的文件
+        if 'file' not in request.files:
+            return bad_request("file is required")
+        
+        file = request.files['file']
+        if not file or not file.filename:
+            return bad_request("file is required")
+        
+        # 验证文件类型
+        allowed_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg'}
+        filename = secure_filename(file.filename)
+        file_ext = Path(filename).suffix.lower()
+        if file_ext not in allowed_extensions:
+            return bad_request(f"Unsupported file type. Allowed: {', '.join(allowed_extensions)}")
+        
+        file_service = FileService(current_app.config['UPLOAD_FOLDER'])
+        
+        # 如果有关联项目，保存到项目目录；否则保存到通用素材目录
+        if target_project_id:
+            materials_dir = file_service._get_materials_dir(target_project_id)
+        else:
+            # 保存到通用素材目录
+            materials_dir = file_service.upload_folder / "materials"
+            materials_dir.mkdir(exist_ok=True, parents=True)
+        
+        # 生成唯一文件名
+        import time
+        timestamp = int(time.time() * 1000)
+        base_name = Path(filename).stem
+        unique_filename = f"{base_name}_{timestamp}{file_ext}"
+        
+        filepath = materials_dir / unique_filename
+        file.save(str(filepath))
+        
+        # 计算相对路径
+        relative_path = str(filepath.relative_to(file_service.upload_folder))
+        
+        # 构造前端可访问的 URL
+        if target_project_id:
+            image_url = file_service.get_file_url(target_project_id, 'materials', unique_filename)
+        else:
+            # 通用素材的 URL
+            image_url = f"/files/materials/{unique_filename}"
+        
+        # 保存素材信息到数据库
+        material = Material(
+            project_id=target_project_id,
+            filename=unique_filename,
+            relative_path=relative_path,
+            url=image_url
+        )
+        db.session.add(material)
+        db.session.commit()
+        
+        return success_response(material.to_dict(), status_code=201)
+    
+    except Exception as e:
+        db.session.rollback()
+        return error_response('SERVER_ERROR', str(e), 500)
+
+
+@material_global_bp.route('', methods=['GET'])
+def list_all_materials():
+    """
+    GET /api/materials - List all materials (global, not bound to a project)
+    
+    Query params:
+        - project_id: Optional filter by project_id (can be 'all' to get all materials, 'none' to get materials without project)
+    
+    Returns:
+        List of material images with filename, url, and metadata
+    """
+    try:
+        # 支持查询参数来筛选项目
+        filter_project_id = request.args.get('project_id', 'all')
+        
+        # 从数据库查询素材
+        query = Material.query
+        
+        if filter_project_id == 'all':
+            # 获取所有素材（包括有 project_id 和没有 project_id 的）
+            pass  # 不添加任何过滤条件
+        elif filter_project_id == 'none':
+            # 只获取没有关联项目的素材
+            query = query.filter(Material.project_id.is_(None))
+        else:
+            # 获取指定项目的素材
+            query = query.filter(Material.project_id == filter_project_id)
+        
+        materials = query.order_by(Material.created_at.desc()).all()
+        
+        # 转换为字典格式
+        materials_list = [material.to_dict() for material in materials]
+        
+        return success_response({
+            "materials": materials_list,
+            "count": len(materials_list)
+        })
+    
+    except Exception as e:
+        return error_response('SERVER_ERROR', str(e), 500)
+
+
+@material_global_bp.route('/upload', methods=['POST'])
+def upload_material_global():
+    """
+    POST /api/materials/upload - Upload a material image (global, not bound to a project)
+    
+    支持 multipart/form-data：
+    - file: 图片文件（必需）
+    - project_id: 可选的查询参数，如果提供则关联到项目，如果不提供或为 'none' 则不关联项目
+    
+    Returns:
+        Material info with filename, url, and metadata
+    """
+    try:
+        # 支持通过查询参数指定 project_id，如果为 'none' 或不提供则不关联项目
+        target_project_id = request.args.get('project_id')
+        if target_project_id == 'none' or not target_project_id:
+            target_project_id = None
+        elif target_project_id:
+            # 验证项目是否存在
+            project = Project.query.get(target_project_id)
+            if not project:
+                return not_found('Project')
+        
+        # 获取上传的文件
+        if 'file' not in request.files:
+            return bad_request("file is required")
+        
+        file = request.files['file']
+        if not file or not file.filename:
+            return bad_request("file is required")
+        
+        # 验证文件类型
+        allowed_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg'}
+        filename = secure_filename(file.filename)
+        file_ext = Path(filename).suffix.lower()
+        if file_ext not in allowed_extensions:
+            return bad_request(f"Unsupported file type. Allowed: {', '.join(allowed_extensions)}")
+        
+        file_service = FileService(current_app.config['UPLOAD_FOLDER'])
+        
+        # 如果有关联项目，保存到项目目录；否则保存到通用素材目录
+        if target_project_id:
+            materials_dir = file_service._get_materials_dir(target_project_id)
+        else:
+            # 保存到通用素材目录
+            materials_dir = file_service.upload_folder / "materials"
+            materials_dir.mkdir(exist_ok=True, parents=True)
+        
+        # 生成唯一文件名
+        import time
+        timestamp = int(time.time() * 1000)
+        base_name = Path(filename).stem
+        unique_filename = f"{base_name}_{timestamp}{file_ext}"
+        
+        filepath = materials_dir / unique_filename
+        file.save(str(filepath))
+        
+        # 计算相对路径
+        relative_path = str(filepath.relative_to(file_service.upload_folder))
+        
+        # 构造前端可访问的 URL
+        if target_project_id:
+            image_url = file_service.get_file_url(target_project_id, 'materials', unique_filename)
+        else:
+            # 通用素材的 URL
+            image_url = f"/files/materials/{unique_filename}"
+        
+        # 保存素材信息到数据库
+        material = Material(
+            project_id=target_project_id,
+            filename=unique_filename,
+            relative_path=relative_path,
+            url=image_url
+        )
+        db.session.add(material)
+        db.session.commit()
+        
+        return success_response(material.to_dict(), status_code=201)
+    
+    except Exception as e:
+        db.session.rollback()
+        return error_response('SERVER_ERROR', str(e), 500)
 
 
