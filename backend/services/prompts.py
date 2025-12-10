@@ -264,12 +264,12 @@ def get_image_generation_prompt(page_desc: str, outline_text: str,
 
 
 <design_guidelines>
-- 画面为4K分辨率，16:9比例，文字清晰锐利
+- 要求文字清晰锐利, 画面为4K分辨率，16:9比例。
 - 配色和设计语言和模板图片严格相似。
 - 根据内容自动设计最完美的构图，不重不漏地渲染"页面描述"中的文本。
-- 如非必要，禁止出现 markdown 格式符号（如 # 和 * 等）
+- 如非必要，禁止出现 markdown 格式符号（如 # 和 * 等）。
 - 只参考风格设计，禁止出现模板中的文字。
-- 使用大小恰当的装饰性图形或插画对空缺位置进行填补
+- 使用大小恰当的装饰性图形或插画对空缺位置进行填补。
 </design_guidelines>
 PPT文字使用中文。
 {material_images_note}{extra_req_text}
