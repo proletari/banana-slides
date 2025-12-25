@@ -532,10 +532,11 @@ banana-slides/
 <img width="240" alt="image" src="https://github.com/user-attachments/assets/fd7a286d-711b-445e-aecf-43e3fe356473" />
 
 - 感谢以下朋友对项目的无偿赞助支持：
+> - 来自 @曹峥 的 ￥100
 > - 来自 @azazo1 的 ￥50
 > - 来自 @🍟 的 ￥20
 > - 来自 @苍何 的 ￥10
-- 如对赞助列表有疑问（如赞赏后没看到您的名字），欢迎<a href="mailto:anionex@qq.com">联系作者</a>
+- 如对赞助列表有疑问（如赞赏后没看到您的名字），可<a href="mailto:anionex@qq.com">联系作者</a>
  
 ## 📈 项目统计
 
