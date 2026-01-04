@@ -325,33 +325,46 @@ class MinerUElementExtractor(ElementExtractor):
                         # 默认当作文本处理
                         actual_content_type = 'text'
                 
-                # 提取content（文本）
-                content = None
-                if actual_content_type in ['text', 'title']:
-                    if block.get('lines'):
-                        line_texts = []
-                        for line in block['lines']:
-                            # 按顺序合并同一行的所有 span
-                            span_texts = []
-                            for span in line.get('spans', []):
-                                span_type = span.get('type', '')
-                                span_content = span.get('content', '')
-                                
-                                if span_type == 'text' and span_content:
-                                    span_texts.append(span_content)
-                                elif span_type == 'inline_equation' and span_content:
-                                    # 处理行内公式：转换 LaTeX 为可显示文本
-                                    from utils.latex_utils import latex_to_text
-                                    converted = latex_to_text(span_content)
-                                    span_texts.append(converted)
+                # 辅助函数：从 lines 提取文本
+                def extract_text_from_lines(lines):
+                    """从 lines 数组提取所有文本内容"""
+                    line_texts = []
+                    for line in lines:
+                        span_texts = []
+                        for span in line.get('spans', []):
+                            span_type = span.get('type', '')
+                            span_content = span.get('content', '')
                             
-                            if span_texts:
-                                # 智能合并：如果前后都没有空格，直接连接
-                                line_text = ''.join(span_texts)
-                                line_texts.append(line_text)
+                            if span_type == 'text' and span_content:
+                                span_texts.append(span_content)
+                            elif span_type == 'inline_equation' and span_content:
+                                from utils.latex_utils import latex_to_text
+                                converted = latex_to_text(span_content)
+                                span_texts.append(converted)
                         
+                        if span_texts:
+                            line_text = ''.join(span_texts)
+                            line_texts.append(line_text)
+                    return line_texts
+                
+                # 提取content（文本）- 包括 caption 类型
+                content = None
+                if actual_content_type in ['text', 'title', 'table_caption', 'image_caption']:
+                    if block.get('lines'):
+                        line_texts = extract_text_from_lines(block['lines'])
                         if line_texts:
                             content = '\n'.join(line_texts).strip()
+                
+                elif actual_content_type == 'list':
+                    # list 类型包含 blocks 子数组，每个 block 有 lines
+                    if block.get('blocks'):
+                        all_line_texts = []
+                        for sub_block in block['blocks']:
+                            if sub_block.get('lines'):
+                                sub_texts = extract_text_from_lines(sub_block['lines'])
+                                all_line_texts.extend(sub_texts)
+                        if all_line_texts:
+                            content = '\n'.join(all_line_texts).strip()
                 
                 # 提取img_path（图片/表格）- 转换为绝对路径
                 img_path = None
@@ -390,12 +403,28 @@ class MinerUElementExtractor(ElementExtractor):
                 element = process_block(block)
                 if element:
                     elements.append(element)
+                # 递归处理子块（table_caption, image_caption 等）
+                # 注意：list 类型的子块已在 process_block 中处理，不需要再递归
+                block_type = block.get('type', '')
+                if block_type != 'list':
+                    for sub_block in block.get('blocks', []):
+                        sub_elem = process_block(sub_block)
+                        if sub_elem:
+                            elements.append(sub_elem)
             
             # 处理页眉页脚（discarded_blocks）
             for block in page_info.get('discarded_blocks', []):
                 element = process_block(block)
                 if element:
                     elements.append(element)
+                # 递归处理子块
+                # 注意：list 类型的子块已在 process_block 中处理，不需要再递归
+                block_type = block.get('type', '')
+                if block_type != 'list':
+                    for sub_block in block.get('blocks', []):
+                        sub_elem = process_block(sub_block)
+                        if sub_elem:
+                            elements.append(sub_elem)
             
             logger.info(f"MinerU提取了 {len(elements)} 个元素")
         
@@ -747,7 +776,7 @@ class ExtractorRegistry:
     # 预定义的元素类型分组
     TABLE_TYPES = {'table', 'table_cell'}
     IMAGE_TYPES = {'image', 'figure', 'chart', 'diagram'}
-    TEXT_TYPES = {'text', 'title', 'paragraph', 'header', 'footer'}
+    TEXT_TYPES = {'text', 'title', 'paragraph', 'header', 'footer', 'list'}
     
     def __init__(self):
         """初始化注册表"""
