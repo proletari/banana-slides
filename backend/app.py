@@ -193,6 +193,34 @@ def _load_settings_to_config(app):
         app.config['MAX_IMAGE_WORKERS'] = settings.max_image_workers
         logging.info(f"Loaded worker settings: desc={settings.max_description_workers}, img={settings.max_image_workers}")
 
+        # Load model settings (FIX for Issue #136: these were missing before)
+        if settings.text_model:
+            app.config['TEXT_MODEL'] = settings.text_model
+            logging.info(f"Loaded TEXT_MODEL from settings: {settings.text_model}")
+        
+        if settings.image_model:
+            app.config['IMAGE_MODEL'] = settings.image_model
+            logging.info(f"Loaded IMAGE_MODEL from settings: {settings.image_model}")
+        
+        # Load MinerU settings
+        if settings.mineru_api_base:
+            app.config['MINERU_API_BASE'] = settings.mineru_api_base
+            logging.info(f"Loaded MINERU_API_BASE from settings: {settings.mineru_api_base}")
+        
+        if settings.mineru_token:
+            app.config['MINERU_TOKEN'] = settings.mineru_token
+            logging.info("Loaded MINERU_TOKEN from settings")
+        
+        # Load image caption model
+        if settings.image_caption_model:
+            app.config['IMAGE_CAPTION_MODEL'] = settings.image_caption_model
+            logging.info(f"Loaded IMAGE_CAPTION_MODEL from settings: {settings.image_caption_model}")
+        
+        # Load output language
+        if settings.output_language:
+            app.config['OUTPUT_LANGUAGE'] = settings.output_language
+            logging.info(f"Loaded OUTPUT_LANGUAGE from settings: {settings.output_language}")
+
     except Exception as e:
         logging.warning(f"Could not load settings from database: {e}")
 
